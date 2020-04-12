@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 2017
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Testing", "Testing.csproj", "{D4DF8A78-D6A8-899A-FAA1-4CB5E8A3FADA}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Pathfinding-Multithreaded-Unity", "Pathfinding-Multithreaded-Unity.csproj", "{66EE3492-FB10-4208-3925-D286808483D7}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Unity.PackageManagerUI.Editor", "Unity.PackageManagerUI.Editor.csproj", "{6877705C-FBD9-0C4F-5AFB-6FB431E5D39D}"
 EndProject
@@ -13,10 +13,10 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{D4DF8A78-D6A8-899A-FAA1-4CB5E8A3FADA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{D4DF8A78-D6A8-899A-FAA1-4CB5E8A3FADA}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{D4DF8A78-D6A8-899A-FAA1-4CB5E8A3FADA}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{D4DF8A78-D6A8-899A-FAA1-4CB5E8A3FADA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{66EE3492-FB10-4208-3925-D286808483D7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{66EE3492-FB10-4208-3925-D286808483D7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{66EE3492-FB10-4208-3925-D286808483D7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{66EE3492-FB10-4208-3925-D286808483D7}.Release|Any CPU.Build.0 = Release|Any CPU
 		{6877705C-FBD9-0C4F-5AFB-6FB431E5D39D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{6877705C-FBD9-0C4F-5AFB-6FB431E5D39D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6877705C-FBD9-0C4F-5AFB-6FB431E5D39D}.Release|Any CPU.ActiveCfg = Release|Any CPU

@@ -1,12 +1,8 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using System.Threading;
-using UnityEditor;
 using UnityEngine;
-using UnityEngine.Profiling;
 
 namespace Map
 {
@@ -18,7 +14,8 @@ namespace Map
         public int x;
         public int y;
         public Vector3 position;
-        public int traverseWeight;
+        public float traverseWeight;
+        public int color;
     }
 
     public class GridCellData
@@ -29,10 +26,23 @@ namespace Map
         public GridCellData prevInQueue;
         public GridCell cell;
         public bool computed;
-        public int distanceFromStart;
-        public int distanceFromEnd;
-        public int weight;
-        public int queueWeight;
+        public float distanceFromStart;
+        public float distanceFromEnd;
+        public float weightDijkstra;
+        public float weightGreedyFirst;
+        public float weightAStar;
+
+        public float GetWeight(PathType type)
+        {
+            return (new float[] { weightAStar, weightDijkstra, weightGreedyFirst })[(int)type];
+        }
+    }
+
+    public enum PathType
+    {
+        AStar,
+        Dijkstra,
+        GreedyFirst
     }
 
     public class PathData
@@ -51,6 +61,8 @@ namespace Map
    
         public List<GridCellData> analizedCells; // just for show
         public bool waitThread; // just for show
+        public bool multiThread;
+        public PathType pathType;
 
         public void PrepareToCompute(GridCell[][] map)
         {
@@ -81,7 +93,9 @@ namespace Map
             startCellData = mapData[start.y][start.x];
             startCellData.distanceFromEnd = PathFindingManager.GetDistanceFromEnd(start, end);
             startCellData.distanceFromStart = 0;
-            startCellData.weight = startCellData.distanceFromEnd + startCellData.cell.traverseWeight;
+            startCellData.weightDijkstra = startCellData.distanceFromStart + startCellData.cell.traverseWeight;
+            startCellData.weightGreedyFirst = startCellData.distanceFromEnd + startCellData.cell.traverseWeight;
+            startCellData.weightAStar = startCellData.distanceFromEnd + startCellData.distanceFromStart + startCellData.cell.traverseWeight;
             startCellData.computed = true;
 
             if (analizedCells == null)
@@ -127,23 +141,10 @@ namespace Map
                 if (path.state == PathState.Idle)
                 {
                     path.state = PathState.Computing;
-                    ThreadManager.instance.RunOnChildThread(() =>
-                    {
-                        Stopwatch stopwatch = null;
-                        if (!path.waitThread)
-                        {
-                            stopwatch = new Stopwatch();
-                            stopwatch.Start();
-                        }
-
-                        ComputePath(map, path, finishCallback);
-
-                        if (!path.waitThread && stopwatch != null)
-                        {
-                            stopwatch.Stop();
-                            UnityEngine.Debug.LogError(stopwatch.ElapsedMilliseconds);
-                        }
-                    });
+                    Action threadedAction = () => ComputePath(map, path, finishCallback);
+                    Action coroutineAction = () => StartCoroutine(DelayedComputePath(map, path, finishCallback));
+                    if (path.multiThread) ThreadManager.instance.RunOnChildThread(threadedAction);
+                    else coroutineAction();
                 }
                 else if (path.state == PathState.Computing)
                 {
@@ -156,7 +157,60 @@ namespace Map
             }
         }
 
+        IEnumerator DelayedComputePath(GridCell[][] map, PathData pathData, Action<bool> finishCallback)
+        {
+            yield return null;
+            //System.Random rnd = new System.Random();
+            pathData.state = PathState.Computing; 
+            pathData.PrepareToCompute(map);
+            GridCellData computingCell = pathData.startCellData;
 
+            if (pathData.start.traverseWeight == -1 || pathData.end.traverseWeight == -1 || pathData.end == pathData.startCellData.cell) pathData.queue.Clear();
+
+            int loops = 0;
+            while (pathData.state == PathState.Computing && pathData.queue.Count > 0)
+            {
+                loops++;
+                if (pathData.waitThread && loops % 20 == 0) yield return null;
+
+                computingCell = pathData.queue[pathData.queue.Count - 1];
+                pathData.queue.RemoveAt(pathData.queue.Count - 1);
+                //computations = computations.OrderBy((x) => rnd.Next()).ToArray();
+                for (int i = 0; i < computations.Length; i++)
+                {
+                    var comp = computations[(i + Time.frameCount) % computations.Length];
+                    float weight = comp[1] == comp[1] || comp[1] == -comp[1] ? 1.45f : 1;
+                    int x = computingCell.cell.x + comp[1];
+                    int y = computingCell.cell.y + comp[0];
+
+                    if (map.Length > y && y >= 0 && map.Length > x && x >= 0 && IsTraversable(map, computingCell.cell, map[y][x]))
+                    {
+                        GridCellData current = pathData.mapData[y][x];
+                        if (ComputeCell(pathData, computingCell, current, weight))
+                        {
+                            pathData.queue.Clear();
+                            computingCell = current;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (computingCell.cell == pathData.end)
+            {
+                PreparePath(pathData, computingCell);
+                if (pathData.waitThread) yield return new WaitForSeconds(1);
+            }
+
+            if (pathData.state == PathState.Computing)
+            {
+                pathData.state = PathState.Idle;
+                finishCallback(computingCell.cell == pathData.end);
+            } else if (pathData.state == PathState.ReadyToCompute)
+            {
+                StartCoroutine(DelayedComputePath(map, pathData, finishCallback));
+            }
+        }
 
         public void ComputePath(GridCell[][] map, PathData pathData, Action<bool> finishCallback)
         {
@@ -167,15 +221,19 @@ namespace Map
 
             if (pathData.start.traverseWeight == -1 || pathData.end.traverseWeight == -1 || pathData.end == pathData.startCellData.cell) pathData.queue.Clear();
 
+            int loops = 0;
             while (pathData.state == PathState.Computing && pathData.queue.Count > 0)
             {
-                if (pathData.waitThread) Thread.Sleep(1);
+                loops++;
+                if (pathData.waitThread && loops % 3 == 0) Thread.Sleep(1);
 
-                GetGridCellDataFromQueue(pathData, ref computingCell);
+
+                computingCell = pathData.queue[pathData.queue.Count - 1];
+                pathData.queue.RemoveAt(pathData.queue.Count - 1);
 
                 for (int i = 0; i < computations.Length; i++)
                 {
-                    int weight = i != 0 && i % 2 == 1 ? 14 : 10;
+                    int weight = i != 0 && i % 2 == 1 ? UnityEngine.Random.Range(14, 17) : 10;
                     int x = computingCell.cell.x + computations[i][1];
                     int y = computingCell.cell.y + computations[i][0];
 
@@ -224,28 +282,39 @@ namespace Map
             }
         }
 
-        public bool ComputeCell(PathData path, GridCellData computingCell, GridCellData current, int transitionWeight)
+        public bool ComputeCell(PathData path, GridCellData computingCell, GridCellData current, float transitionWeight)
         {
             if (!current.computed)
             {
                 current.prev = computingCell;
-                current.distanceFromEnd = GetDistanceFromEnd(current.cell, path.end);
-                current.distanceFromStart = computingCell.distanceFromStart + transitionWeight;
-                current.weight = current.distanceFromEnd + current.distanceFromStart + current.cell.traverseWeight;
-                current.queueWeight = current.weight + current.distanceFromEnd;
-              
+                current.distanceFromEnd = GetDistanceFromEnd(current.cell, path.end) * 8;
+                current.distanceFromStart = computingCell.distanceFromStart + current.cell.traverseWeight * transitionWeight;
+                current.weightDijkstra = current.distanceFromStart;
+                current.weightGreedyFirst = current.distanceFromEnd + current.cell.traverseWeight * 40;
+                current.weightAStar = current.distanceFromEnd + current.distanceFromStart;
+
                 current.computed = true;
                 path.analizedCells.Add(current);
 
                 AddGridCellDataToQueue(path, current);
             }
-            //else if (current.distanceFromStart > computingCell.distanceFromStart + weight)
-            //{
-            //    current.prev = computingCell;
-            //    current.distanceFromStart = computingCell.distanceFromStart + weight;
-            //    current.computed = true;
-            //    //AddGridCellDataToQueue(ref queueHead, current);
-            //}
+            {
+                //else
+                //{
+                //    float distanceFromStart = computingCell.distanceFromStart + current.cell.traverseWeight * transitionWeight;
+                //    if (current.distanceFromStart > distanceFromStart)
+                //    {
+                //        current.prev = computingCell;
+                //        current.distanceFromStart = distanceFromStart;
+                //        current.weightDijkstra = current.distanceFromStart;
+                //        current.weightGreedyFirst = current.distanceFromEnd + current.cell.traverseWeight * 40;
+                //        current.weightAStar = current.distanceFromEnd + distanceFromStart;
+                //        AddGridCellDataToQueue(path, current);
+                //    }
+                //}
+            }
+
+
 
             if (current.cell == path.end)
                 return true;
@@ -253,11 +322,6 @@ namespace Map
                 return false;
         }
 
-        private void GetGridCellDataFromQueue(PathData path, ref GridCellData computingCell)
-        {
-            computingCell = path.queue[path.queue.Count - 1];
-            path.queue.RemoveAt(path.queue.Count - 1);
-        }
 
         private void AddGridCellDataToQueue(PathData path, GridCellData data)
         {
@@ -270,9 +334,9 @@ namespace Map
             while (start < end)
             {
                 index = (start + end) / 2;
-                // depending on what you want you may use "data.weight < path.queue[index].weight"
-                // This way is faster but is more linear
-                if (data.queueWeight < path.queue[index].queueWeight) 
+
+                PathType type = path.pathType;
+                if (data.GetWeight(type) < path.queue[index].GetWeight(type)) 
                 {
                     start = index + 1;
                 }
@@ -296,12 +360,23 @@ namespace Map
             return false;
         }
 
-        internal static int GetDistanceFromEnd(GridCell cell, GridCell end)
+        internal static float GetDistanceFromEnd(GridCell cell, GridCell end)
         {
-            int diffX = Mathf.Abs(cell.x - end.x);
-            int diffY = Mathf.Abs(cell.y - end.y);
+            //int diffX = Mathf.Abs(cell.x - end.x);
+            //int diffY = Mathf.Abs(cell.y - end.y);
+            //return diffX + diffY;
+            var x = Math.Abs(end.x - cell.x);
+            var y = Math.Abs(end.y - cell.y);
+            var max = x > y ? x : y;
+            var min = x < y ? x : y;
 
-            return Mathf.Min(diffY, diffX) * 14 + Mathf.Max(diffY, diffX) * 10;
+            if (min < 0.04142135 * max )
+                return  0.99f * max + 0.197f * min;
+            else
+                return 0.84f * max + 0.561f * min;
+
+            //(float)Math.Pow(end.x - cell.x, 2) + (float)Math.Pow(end.y - cell.y, 2)
+            //Mathf.Min(diffY, diffX) * 14 + Mathf.Max(diffY, diffX) * 10;
         }
 
     }

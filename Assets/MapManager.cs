@@ -1,40 +1,30 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
-using UnityEditor;
 using UnityEngine;
 
 namespace Map
 {
-    [CustomEditor(typeof(MapManager))]
-    public class MapManagerEditor : Editor
-    {
-        public override void OnInspectorGUI()
-        {
-            DrawDefaultInspector();
-
-            MapManager myScript = (MapManager)target;
-            if (GUILayout.Button("Regenerate"))
-            {
-                myScript.RegenerateMap(myScript.GetMap());
-            }
-        }
-    }
     public class MapManager : MonoBehaviour
     {
         public static MapManager instance;
         public Texture2D texture;
-        private GridCell[][] map = new GridCell[300][];
+        private GridCell[][] map;
 
-        void Awake()
+        private void Awake()
         {
             instance = this;
-            RegenerateMap(map);
         }
 
-        public void RegenerateMap(GridCell[][] map)
+        public void RegenerateMap(GridCell[][] map, int size)
         {
-            if (map == null)
-                map = new GridCell[300][];
+            var tileSizeOne = Random.Range(0.2f, 1f);
+            var tileSizeTwo = Random.Range(7f, 12f);
+            var tileSizeThree = Random.Range(1f, 4f);
+            var tileSizeFour = Random.Range(2f, 5f);
+            var random = Random.Range(0, 1000);
+
+            if (map == null || map.Length != size)
+                map = new GridCell[size][];
             for (int i = 0; i < map.Length; i++)
             {
                 if(map[i] == null)
@@ -47,6 +37,12 @@ namespace Map
                     map[i][j].x = j;
                     map[i][j].y = i;
                     map[i][j].traverseWeight = Random.Range(0, 5) != 2 ? 1 : -1;
+                    var one = Mathf.PerlinNoise(((float)(i + random) / (float)300) * tileSizeOne, ((float)(j + random) / (float)300) * tileSizeOne) / 2;
+                    var two = Mathf.PerlinNoise(((float)(i + random) / (float)300) * tileSizeTwo, ((float)(j + random) / (float)300) * tileSizeTwo) / 1;
+                    var three = Mathf.PerlinNoise(((float)(i + random) / (float)300) * tileSizeThree, ((float)(j + random) / (float)300) * tileSizeThree) ;
+                    var four = Mathf.PerlinNoise(((float)(i + random) / (float)300) * tileSizeFour, ((float)(j + random) / (float)300) * tileSizeFour);
+                    map[i][j].color = (int)Mathf.Lerp(0, 255, Mathf.Clamp((Mathf.Pow((four + one) / 2, two) + (three / 1.2f - 0.5f) * 2f), 0, 1));
+                    map[i][j].traverseWeight = Mathf.Lerp(1, 20f, map[i][j].color / 255f);
                 }
             }
         }
@@ -63,7 +59,8 @@ namespace Map
                     map[i][j] = new GridCell();
                     map[i][j].x = j;
                     map[i][j].y = i;
-                    map[i][j].traverseWeight = (int)(texture.GetPixel(i, j).grayscale * 1000);
+                    map[i][j].color = (int)(texture.GetPixel(i, j).grayscale * 255);
+                    map[i][j].traverseWeight = Mathf.Lerp(1, 20f, texture.GetPixel(i, j).grayscale);
                 }
             }
         }
